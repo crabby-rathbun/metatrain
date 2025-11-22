@@ -752,6 +752,239 @@ class TensorMapEnsembleNLLLoss(BaseTensorMapLoss):
         return self.compute_flattened(tmap_pred_mean, tmap_targ, tmap_pred_var)
 
 
+class HuberNLLLoss(torch.nn.Module):
+    """
+    Mixed Gaussian/Laplace negative log-likelihood consistent with a Huber loss.
+
+    Given mean `mu`, target `y`, and variance `var`, this loss computes
+
+        z = (y - mu) / sigma,  where sigma^2 = var
+
+    and then
+
+        loss = huber_delta(z) + 0.5 * log(var)
+
+    with
+
+        huber_delta(z) =
+            0.5 * z^2                                  if |z| <= delta
+            delta * (|z| - 0.5 * delta)                otherwise
+
+    This matches a Gaussian core for small residuals and Laplace-like tails
+    beyond `delta` in standardized residual units.
+
+    :param delta: Huber threshold in standardized residual space.
+    :param reduction: Reduction over the element-wise losses.
+    :param eps: Small positive value added to `var` for numerical stability.
+    """
+
+    def __init__(self, delta: float, reduction: str = "mean", eps: float = 1e-8):
+        super().__init__()
+        if reduction not in ("none", "mean", "sum"):
+            raise ValueError(f"Invalid reduction '{reduction}'")
+        self.delta = float(delta)
+        self.reduction = reduction
+        self.eps = float(eps)
+
+    def forward(
+        self,
+        input: torch.Tensor,
+        target: torch.Tensor,
+        var: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute the Huber NLL loss.
+
+        :param input: Predicted means.
+        :param target: Target values.
+        :param var: Predicted variances.
+        :return: Element-wise loss tensor.
+        """
+        # Ensure positive variance
+        var_safe = var.clamp_min(self.eps)
+        sigma = torch.sqrt(var_safe)
+
+        # Standardized residual
+        z = (target - input) / sigma
+
+        abs_z = z.abs()
+        quadratic = 0.5 * z**2
+        linear = self.delta * (abs_z - 0.5 * self.delta)
+        huber = torch.where(abs_z <= self.delta, quadratic, linear)
+
+        # Variance term (analogous to GaussianNLLLoss)
+        loss = huber + 0.5 * torch.log(var_safe)
+
+        if self.reduction == "mean":
+            return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
+        else:  # "none"
+            return loss
+
+
+class TensorMapEnsembleHuberNLLLoss(BaseTensorMapLoss):
+    """
+    Huber-based mixed Gaussian/Laplace NLL for ensembles based on TensorMap entries.
+
+    Assumes that ensemble is the outermost dimension of TensorBlock properties.
+
+    Compared to TensorMapEnsembleNLLLoss (GaussianNLL), this loss replaces the
+    squared standardized residual ( (y - mu)^2 / sigma^2 ) with a Huber loss in
+    z-space, while still including a log-variance term.
+
+    :param name: Key in the predictions/targets dict.
+    :param gradient: Optional gradient field name (currently ignored, gradients are not
+        yet supported for this loss).
+    :param weight: Weight of the loss contribution in the final aggregation.
+    :param reduction: Reduction mode ("none", "mean", "sum") passed to the underlying
+        loss.
+    :param delta: Huber threshold in standardized residual space.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        gradient: Optional[str],
+        weight: float,
+        reduction: str,
+        delta: float,
+    ):
+        super().__init__(
+            name,
+            gradient,
+            weight,
+            reduction,
+            loss_fn=HuberNLLLoss(delta=delta, reduction=reduction),
+        )
+
+    # this is technically incompatible with the BaseTensorMapLoss compute_flattened:
+    # ignore the type error
+    def compute_flattened(  # type: ignore[override]
+        self,
+        pred_mean: TensorMap,
+        target: TensorMap,
+        pred_var: TensorMap,
+    ) -> torch.Tensor:
+        """
+        Flatten prediction and target blocks (and optional mask), then
+        apply the torch loss.
+
+        :param pred_mean: Mean of ensemble predictions.
+        :param target: Target TensorMap.
+        :param pred_var: Variance of ensemble predictions (same layout as `pred_mean`).
+        :return: Scalar loss tensor (under the chosen reduction).
+        """
+        if self.gradient is not None:
+            # gradients not supported for this loss yet
+            return torch.tensor(0.0, device=pred_mean.block().values.device)
+
+        list_pred_mean_segments = []
+        list_target_segments = []
+        list_pred_var_segments = []
+
+        def extract_flattened_values_from_block(
+            tensor_block: mts.TensorBlock,
+        ) -> torch.Tensor:
+            values = tensor_block.values
+            return values.reshape(-1)
+
+        # Loop over each key in the TensorMap
+        for single_key in target.keys:
+            block_pred_mean = pred_mean.block(single_key)
+            block_target = target.block(single_key)
+            block_pred_var = pred_var.block(single_key)
+
+            flat_pred_mean = extract_flattened_values_from_block(block_pred_mean)
+            flat_target = extract_flattened_values_from_block(block_target)
+            flat_pred_var = extract_flattened_values_from_block(block_pred_var)
+
+            list_pred_mean_segments.append(flat_pred_mean)
+            list_target_segments.append(flat_target)
+            list_pred_var_segments.append(flat_pred_var)
+
+        # Concatenate all segments and apply the torch loss
+        all_pred_mean_flattened = torch.cat(list_pred_mean_segments)
+        all_targets_flattened = torch.cat(list_target_segments)
+        all_pred_var_flattened = torch.cat(list_pred_var_segments)
+
+        return self.torch_loss(
+            all_pred_mean_flattened,
+            all_targets_flattened,
+            all_pred_var_flattened,
+        )
+
+    def compute(
+        self,
+        predictions: Dict[str, TensorMap],
+        targets: Dict[str, TensorMap],
+        extra_data: Optional[Dict[str, TensorMap]] = None,
+    ) -> torch.Tensor:
+        """
+        Gather and flatten target and prediction blocks, then compute loss.
+
+        :param predictions: Mapping from target names to TensorMaps; must contain
+            ensemble as the outer-most property dimension.
+        :param targets: Mapping from target names to reference TensorMaps.
+        :param extra_data: Ignored for this loss.
+        :return: Scalar loss tensor (under the chosen reduction).
+        """
+        ens_name = "mtt::aux::" + self.target.replace("mtt::", "") + "_ensemble"
+        if ens_name == "mtt::aux::energy_ensemble":
+            ens_name = "energy_ensemble"
+
+        tmap_pred_orig = predictions[self.target]
+        tmap_pred_ens = predictions[ens_name]
+        tmap_targ = targets[self.target]
+
+        # number of ensembles extracted from TensorMaps
+        n_ens = (
+            tmap_pred_ens.block(0).values.shape[1]
+            // tmap_pred_orig.block(0).values.shape[1]
+        )
+
+        ens_pred_values = tmap_pred_ens.block().values  # shape: (samples, properties)
+
+        ens_pred_values = ens_pred_values.reshape(ens_pred_values.shape[0], n_ens, -1)
+        ens_pred_mean = ens_pred_values.mean(dim=1)
+        ens_pred_var = ens_pred_values.var(dim=1, unbiased=True)
+
+        device = tmap_targ.block().values.device
+
+        tmap_pred_mean = TensorMap(
+            keys=Labels(
+                names=["_"],
+                values=torch.tensor([[0]], device=device),
+            ),
+            blocks=[
+                TensorBlock(
+                    values=ens_pred_mean,
+                    samples=tmap_targ.block().samples,
+                    components=tmap_targ.block().components,
+                    properties=tmap_targ.block().properties,
+                ),
+            ],
+        )
+
+        tmap_pred_var = TensorMap(
+            keys=Labels(
+                names=["_"],
+                values=torch.tensor([[0]], device=device),
+            ),
+            blocks=[
+                TensorBlock(
+                    values=ens_pred_var,
+                    samples=tmap_targ.block().samples,
+                    components=tmap_targ.block().components,
+                    properties=tmap_targ.block().properties,
+                ),
+            ],
+        )
+
+        # Note that we're ignoring all gradients for now. This can be extended later.
+        return self.compute_flattened(tmap_pred_mean, tmap_targ, tmap_pred_var)
+
+
 # --- aggregator -----------------------------------------------------------------------
 
 
@@ -920,6 +1153,7 @@ class LossType(Enum):
     MASKED_POINTWISE = ("masked_pointwise", MaskedTensorMapLoss)
     MASKED_DOS = ("masked_dos", MaskedDOSLoss)
     ENSEMBLE_NLL = ("ensemble_nll", TensorMapEnsembleNLLLoss)
+    ENSEMBLE_HUBER_NLL = ("ensemble_huber_nll", TensorMapEnsembleHuberNLLLoss)
 
     def __init__(self, key: str, cls: Type[LossInterface]) -> None:
         self._key = key
