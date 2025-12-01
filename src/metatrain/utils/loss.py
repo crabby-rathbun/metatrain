@@ -903,7 +903,6 @@ class TensorMapEnsembleCRPSLoss(BaseTensorMapLoss):
         reduction: str,
         empirical: bool = False,
     ):
-
         self.empirical = empirical
 
         if empirical:

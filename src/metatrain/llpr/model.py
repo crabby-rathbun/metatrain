@@ -386,18 +386,19 @@ class LLPRUncertaintyModel(ModelInterface[ModelHypers]):
                 num_prop,
             )  # shape: samples, num_ens, num_prop
 
-            # since we know the exact mean of the ensemble from the model's prediction,
-            # it should be mathematically correct to use it to re-center the ensemble.
-            # Besides making sure that the average is always correct (so that results
-            # will always be consistent between LLPR ensembles and the original model),
-            # this also takes care of additive contributions that are not present in the
-            # last layer, which can be composition, short-range models, a bias in the
-            # last layer, etc.
-            ensemble_values = (
-                ensemble_values
-                - ensemble_values.mean(dim=1, keepdim=True)
-                + return_dict[original_name].block().values.unsqueeze(1)  # ens_dim
-            )
+            if self.hypers["recenter_ensemble"]:
+                # since we know the exact mean of the ensemble from the model's prediction,
+                # it should be mathematically correct to use it to re-center the ensemble.
+                # Besides making sure that the average is always correct (so that results
+                # will always be consistent between LLPR ensembles and the original model),
+                # this also takes care of additive contributions that are not present in the
+                # last layer, which can be composition, short-range models, a bias in the
+                # last layer, etc.
+                ensemble_values = (
+                    ensemble_values
+                    - ensemble_values.mean(dim=1, keepdim=True)
+                    + return_dict[original_name].block().values.unsqueeze(1)  # ens_dim
+                )
 
             ensemble_values = ensemble_values.reshape(
                 ensemble_values.shape[0],

@@ -35,6 +35,14 @@ class ModelHypers(TypedDict):
     listed.
     """
 
+    recenter_ensemble: bool = True
+    """Whether to recenter the mean of the ensemble. If set to ``True``, the mean
+    of the ensemble will be fixed to the prediction of the wrapped model, and only
+    the ensemble deviations will be trained. This is useful for LLPR ensembles, where
+    we want to keep the original prediction of the model unchanged, and only adjust
+    the uncertainty estimates.
+    """
+
 
 class TrainerHypers(TypedDict):
     """Hyperparameters for the LLPR trainer."""
