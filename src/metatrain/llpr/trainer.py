@@ -413,6 +413,7 @@ class Trainer(TrainerInterface[TrainerHypers]):
         for key, value in model_unwrapped.dataset_info.targets.items():
             requested_outputs[key] = model_unwrapped.capabilities.outputs[key]
             requested_outputs[key].per_atom = value.per_atom
+            requested_outputs[key].explicit_gradients = value.gradients
             if key == "energy":
                 ensemble_name = "energy_ensemble"
             else:
@@ -456,6 +457,7 @@ class Trainer(TrainerInterface[TrainerHypers]):
                     requested_outputs,
                     is_training=True,
                 )
+                # print(predictions["energy"][0], targets["energy"][0], loss_fn.losses)
 
                 train_loss_batch = loss_fn(predictions, targets, extra_data)
 
@@ -482,7 +484,7 @@ class Trainer(TrainerInterface[TrainerHypers]):
                 )
                 targets = average_by_num_atoms(targets, systems, per_structure_targets)
 
-                targets = _drop_gradient_blocks(targets)
+                # targets = _drop_gradient_blocks(targets)
                 train_rmse_calculator.update(predictions, targets)
                 if self.hypers["log_mae"]:
                     train_mae_calculator.update(predictions, targets)
@@ -529,7 +531,7 @@ class Trainer(TrainerInterface[TrainerHypers]):
                 )
                 targets = average_by_num_atoms(targets, systems, per_structure_targets)
 
-                targets = _drop_gradient_blocks(targets)
+                # targets = _drop_gradient_blocks(targets)
                 val_rmse_calculator.update(predictions, targets)
                 if self.hypers["log_mae"]:
                     val_mae_calculator.update(predictions, targets)

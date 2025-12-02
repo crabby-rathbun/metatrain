@@ -638,8 +638,8 @@ class TensorMapEnsembleNLLLoss(BaseTensorMapLoss):
         :param pred_var: variance of ensemble predictions :py:class:`TensorMap`.
         :return: scalar torch.Tensor of the computed loss.
         """
-        if self.gradient is not None:
-            return 0.0  # gradients not supported for this loss yet
+        # if self.gradient is not None:
+        #     return 0.0  # gradients not supported for this loss yet
 
         list_pred_mean_segments = []
         list_target_segments = []
@@ -935,8 +935,8 @@ class TensorMapEnsembleCRPSLoss(BaseTensorMapLoss):
         :param pred_var: variance of ensemble predictions :py:class:`TensorMap`.
         :return: scalar torch.Tensor of the computed loss.
         """
-        if self.gradient is not None:
-            return 0.0  # gradients not supported for this loss yet
+        # if self.gradient is not None:
+        #     return 0.0  # gradients not supported for this loss yet
 
         list_pred_mean_segments = []
         list_target_segments = []
@@ -1017,8 +1017,8 @@ class TensorMapEnsembleCRPSLoss(BaseTensorMapLoss):
             # distribution. We flatten samples and property dimensions into a single
             # batch dimension B, keeping the ensemble dimension explicit.
 
-            if self.gradient is not None:
-                return 0.0  # gradients not supported for this loss yet
+            # if self.gradient is not None:
+            #     return 0.0  # gradients not supported for this loss yet
 
             # ens_pred_values: (S, M, P)
             # target values:   (S, P)
@@ -1195,9 +1195,9 @@ class TensorMapEnsembleHuberNLLLoss(BaseTensorMapLoss):
         :param pred_var: Variance of ensemble predictions (same layout as `pred_mean`).
         :return: Scalar loss tensor (under the chosen reduction).
         """
-        if self.gradient is not None:
-            # gradients not supported for this loss yet
-            return torch.tensor(0.0, device=pred_mean.block().values.device)
+        # if self.gradient is not None:
+        #     # gradients not supported for this loss yet
+        #     return torch.tensor(0.0, device=pred_mean.block().values.device)
 
         list_pred_mean_segments = []
         list_target_segments = []

@@ -17,10 +17,12 @@ def apply_ensemble_training_strategy(
     """
 
     # Start by making all parameters trainable
+    model.model.training = True
     for param in model.parameters():
         param.requires_grad = True
 
     if not train_all_parameters:
+        model.model.training = False
         # Freeze all parameters of the base model
         for param in model.model.parameters():
             param.requires_grad = False

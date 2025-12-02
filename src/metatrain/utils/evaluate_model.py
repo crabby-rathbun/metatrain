@@ -71,7 +71,12 @@ def evaluate_model(
                 if "strain" in targets[target_name].gradients:
                     energy_targets_that_require_strain_gradients.append(target_name)
             else:
-                pass  # ModelOutput can't have gradient information for now
+                # pass  # ModelOutput can't have gradient information for now
+                # Check if the energy requires gradients:
+                if "positions" in targets[target_name].explicit_gradients:
+                    energy_targets_that_require_position_gradients.append(target_name)
+                if "strain" in targets[target_name].explicit_gradients:
+                    energy_targets_that_require_strain_gradients.append(target_name)
 
     new_systems = []
     strains = []
@@ -131,6 +136,7 @@ def evaluate_model(
                 is_training=is_training,
                 destroy_graph=(index == len(energy_targets_with_gradients) - 1),
             )
+
             old_energy_tensor_map = model_outputs[energy_target]
             new_block = old_energy_tensor_map.block().copy()
             new_block.add_gradient("positions", _position_gradients_to_block(gradients))

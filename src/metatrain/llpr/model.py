@@ -68,11 +68,14 @@ class LLPRUncertaintyModel(ModelInterface[ModelHypers]):
         internally when reloading checkpoints.
     """
 
+    recenter_ensemble: bool
+
     def __init__(self, hypers: ModelHypers, dataset_info: DatasetInfo) -> None:
         super().__init__(hypers, dataset_info, self.__default_metadata__)
 
         self.hypers = hypers
         self.dataset_info = dataset_info
+        self.recenter_ensemble = hypers["recenter_ensemble"]
 
     def set_wrapped_model(self, model: ModelInterface) -> None:
         # this function is called after initialization, as well as
@@ -386,7 +389,7 @@ class LLPRUncertaintyModel(ModelInterface[ModelHypers]):
                 num_prop,
             )  # shape: samples, num_ens, num_prop
 
-            if self.hypers["recenter_ensemble"]:
+            if self.recenter_ensemble:
                 # since we know the exact mean of the ensemble from the model's prediction,
                 # it should be mathematically correct to use it to re-center the ensemble.
                 # Besides making sure that the average is always correct (so that results
@@ -440,6 +443,20 @@ class LLPRUncertaintyModel(ModelInterface[ModelHypers]):
                     ),
                 ],
             )
+
+            # print(return_dict[original_name].block())
+            if not self.recenter_ensemble:
+                return_dict[original_name] = TensorMap(
+                    return_dict[original_name].keys,
+                    [
+                        TensorBlock(
+                            values=ensemble[0].values.mean(dim=1, keepdim=True),
+                            samples=ll_features.block().samples,
+                            components=ll_features.block().components,
+                            properties=cur_prop,
+                        )
+                    ],
+                )
 
             return_dict[ens_name] = ensemble
 

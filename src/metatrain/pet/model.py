@@ -417,7 +417,8 @@ class PET(ModelInterface[ModelHypers]):
 
         # the scaled_dot_product_attention function from torch cannot do
         # double backward, so we will use manual attention if needed
-        use_manual_attention = edge_vectors.requires_grad and self.training
+        # use_manual_attention = edge_vectors.requires_grad and self.training
+        use_manual_attention = True
 
         edge_distances = torch.sqrt(torch.sum(edge_vectors**2, dim=2) + 1e-15)
         cutoff_factors = cutoff_func(edge_distances, self.cutoff, self.cutoff_width)

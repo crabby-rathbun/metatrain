@@ -396,6 +396,7 @@ class Trainer(TrainerInterface[TrainerHypers]):
                 )
                 targets = average_by_num_atoms(targets, systems, per_structure_targets)
                 train_loss_batch = loss_fn(predictions, targets, extra_data)
+                # print(predictions["energy"][0], targets["energy"][0])
 
                 if is_distributed:
                     # make sure all parameters contribute to the gradient calculation
