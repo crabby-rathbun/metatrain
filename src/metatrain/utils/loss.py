@@ -804,6 +804,9 @@ class GaussianCRPSLoss(torch.nn.Module):
 
         crps = sigma * (z * (2.0 * Phi - 1.0) + 2.0 * phi - inv_sqrt_pi)
 
+        # additional MSE term on the mean prediction
+        crps += (input - target) ** 2
+
         if self.reduction == "mean":
             return crps.mean()
         elif self.reduction == "sum":
