@@ -663,6 +663,82 @@ class GaussianCRPSLoss(torch.nn.Module):
             raise ValueError(self.reduction + " is not valid")
 
 
+class EmpiricalCRPSLoss(torch.nn.Module):
+    """
+    Empirical CRPS loss for ensemble predictions.
+
+    The ensemble predictions {Y_i}_{i=1}^M for each data point define
+    an empirical predictive distribution:
+
+        F_M(y) = (1/M) sum_i 1_{Y_i <= y}
+
+    The CRPS of this empirical distribution at observation z has the
+    closed form:
+
+        CRPS(F_M, z) =
+            (1/M) * sum_i |Y_i - z|
+            - (1 / (2 M^2)) * sum_{i,j} |Y_i - Y_j|.
+
+    This module assumes:
+
+        forward(ensemble, target)
+
+    where
+        ensemble: shape (B, M)  - B points, M ensemble members
+        target:   shape (B,)    - scalar targets
+
+    :param reduction: 'none', 'mean', or 'sum'.
+    """
+
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(
+        self,
+        ensemble: torch.Tensor,
+        target: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute the Empirical CRPS loss.
+
+        :param ensemble: Ensemble predictions, shape (B, M).
+        :param target: Target values, shape (B,).
+        :return: Value of the loss.
+        """
+        # ensemble: (B, M), target: (B,)
+        if ensemble.dim() != 2:
+            raise ValueError(
+                f"EmpiricalCRPSLoss expects ensemble with shape (B, M), "
+                f"got {ensemble.shape}"
+            )
+        if target.dim() != 1 or target.shape[0] != ensemble.shape[0]:
+            raise ValueError(
+                f"EmpiricalCRPSLoss expects target with shape (B,), "
+                f"got {target.shape} for ensemble batch {ensemble.shape[0]}"
+            )
+
+        # Term 1: mean |Y_i - z| over ensemble members
+        # shape: (B,)
+        term1 = (ensemble - target.unsqueeze(1)).abs().mean(dim=1)
+
+        # Term 2: 0.5 * mean |Y_i - Y_j| over all pairs (i, j)
+        # ensemble -> (B, M, M) of pairwise differences
+        diffs = ensemble.unsqueeze(2) - ensemble.unsqueeze(1)
+        term2 = 0.5 * diffs.abs().mean(dim=(1, 2))
+
+        crps = term1 - term2
+
+        if self.reduction == "mean":
+            return crps.mean()
+        elif self.reduction == "sum":
+            return crps.sum()
+        elif self.reduction == "none":
+            return crps
+        else:
+            raise ValueError(f"Invalid reduction mode: {self.reduction}")
+
+
 class TensorMapLLPREnsembleLoss(BaseTensorMapLoss):
     """
     Loss for ensembles based on :py:class:`TensorMap` entries.
@@ -688,8 +764,12 @@ class TensorMapLLPREnsembleLoss(BaseTensorMapLoss):
             loss_fn = torch.nn.GaussianNLLLoss(reduction=reduction)
         elif scoring_rule == "gaussian_crps":
             loss_fn = GaussianCRPSLoss(reduction=reduction)
+        elif scoring_rule == "empirical_crps":
+            loss_fn = EmpiricalCRPSLoss(reduction=reduction)
         else:
             raise ValueError(f"Unknown LLPREnsembleLoss scoring rule: {scoring_rule}")
+
+        self.scoring_rule = scoring_rule
 
         super().__init__(
             name,
@@ -791,8 +871,21 @@ class TensorMapLLPREnsembleLoss(BaseTensorMapLoss):
         )
 
         ens_pred_values = tmap_pred_ens.block().values  # shape: samples, properties
-
         ens_pred_values = ens_pred_values.reshape(ens_pred_values.shape[0], n_ens, -1)
+
+        if self.scoring_rule == "empirical_crps":
+            # For empirical CRPS, we need the full ensemble predictions
+            target_values = tmap_targ.block().values  # (S, P)
+
+            S, M, P = ens_pred_values.shape
+
+            # Reorder to (S, P, M) and then flatten S*P into B:
+            # y_ensemble: (B, M), y_target: (B,)
+            y_ensemble = ens_pred_values.permute(0, 2, 1).reshape(-1, M)
+            y_target = target_values.reshape(-1)
+
+            return self.torch_loss(y_ensemble, y_target)
+
         ens_pred_mean = ens_pred_values.mean(dim=1)
         ens_pred_var = ens_pred_values.var(dim=1, unbiased=True)
 
