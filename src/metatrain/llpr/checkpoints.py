@@ -62,3 +62,37 @@ def trainer_update_v1_v2(checkpoint: dict) -> None:
     if "train_hypers" in checkpoint:
         checkpoint["train_hypers"]["distributed"] = False
         checkpoint["train_hypers"]["distributed_port"] = 39591
+
+
+def trainer_update_v2_v3(checkpoint: dict) -> None:
+    """
+    Update trainer checkpoint from version 2 to version 3.
+
+    :param checkpoint: The checkpoint to update.
+    """
+    if "train_hypers" in checkpoint:
+        checkpoint["train_hypers"]["batch_atom_bounds"] = [None, None]
+
+
+def trainer_update_v3_v4(checkpoint: dict) -> None:
+    """
+    Update trainer checkpoint from version 3 to version 4.
+
+    :param checkpoint: The checkpoint to update.
+    """
+    if "train_hypers" in checkpoint:
+        checkpoint["train_hypers"]["calibrate_with_absolute_residuals"] = False
+
+
+def trainer_update_v4_v5(checkpoint: dict) -> None:
+    """
+    Update trainer checkpoint from version 4 to version 5.
+
+    :param checkpoint: The checkpoint to update.
+    """
+    # added calibration method to pick the alpha prefactor
+    if "train_hypers" in checkpoint:
+        if checkpoint["train_hypers"].get("calibrate_with_absolute_residuals", False):
+            checkpoint["train_hypers"]["calibration_method"] = "absolute_residuals"
+        else:
+            checkpoint["train_hypers"]["calibration_method"] = "squared_residuals"

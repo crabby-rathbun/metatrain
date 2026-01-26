@@ -81,6 +81,7 @@ phace = [
     "opt-einsum",
 ]
 llpr = []
+classifier = []
 mace = [
     "mace-torch >=0.3.14",
     "e3nn"

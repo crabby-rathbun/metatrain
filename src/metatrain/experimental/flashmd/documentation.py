@@ -1,24 +1,33 @@
 """
-FlashMD
-=======
+FlashMD (Experimental)
+======================
 
 FlashMD is a method for the direct prediction of positions and momenta in a molecular
 dynamics simulation, presented in :footcite:p:`bigi_flashmd_2025`. When compared to
 traditional molecular dynamics methods, it predicts the positions and momenta of atoms
-after a long time interval, allowing the use of much larger time steps. Therefore, it
-achieves a significant speedup (10-30x) compared to molecular dynamics using MLIPs.
-The FlashMD architecture implemented in metatrain is based on the
-:ref:`PET architecture <architecture-pet>`.
+after a long time interval, allowing the use of much larger time steps, and does so in a
+way that does not require computing forces by backpropagation. Overall, it achieves a
+significant speedup (up to 60-90x) compared to molecular dynamics using an MLIP with
+similar architecture and number of parameters. The FlashMD architecture implemented in
+metatrain is based on the :ref:`PET architecture <arch-pet>`.
 
 {{SECTION_INSTALLATION}}
+
+Additional outputs
+------------------
+
+- ``features``: the internal FlashMD features, before the different heads for each
+  target.
+- :ref:`mtt-aux-target-last-layer-features`: The features for a given target, taken
+  before the last linear layer of the corresponding head.
 
 {{SECTION_DEFAULT_HYPERS}}
 
 Tuning hyperparameters
 ----------------------
 
-Most of the parameters of FlashMD are inherited from the PET architecure, although
-they might have different default values.
+Most of the parameters of FlashMD are inherited from the PET architecure, although they
+might have different default values.
 
 .. container:: mtt-hypers-remove-classname
 
@@ -38,9 +47,9 @@ they might have different default values.
 
 from typing import Literal, Optional
 
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
-from metatrain.pet.modules.finetuning import FinetuneHypers
+from metatrain.pet.modules.finetuning import FinetuneHypers, NoFinetuneHypers
 from metatrain.utils.additive import FixedCompositionWeights
 from metatrain.utils.hypers import init_with_defaults
 from metatrain.utils.long_range import LongRangeHypers
@@ -108,6 +117,8 @@ class ModelHypers(TypedDict):
     """Layer normalization type."""
     activation: Literal["SiLU", "SwiGLU"] = "SwiGLU"
     """Activation function."""
+    attention_temperature: float = 1.0
+    """The temperature scaling factor for attention scores."""
     transformer_type: Literal["PreLN", "PostLN"] = "PreLN"
     """The order in which the layer normalization and attention
     are applied in a transformer block. Available options are ``PreLN``
@@ -232,9 +243,16 @@ class TrainerHypers(TypedDict):
     loss: str | dict[str, LossSpecification | str] = "mse"
     """This section describes the loss function to be used. See the
     :ref:`loss-functions` for more details."""
+    batch_atom_bounds: list[Optional[int]] = [None, None]
+    """Bounds for the number of atoms per batch as [min, max]. Batches with atom
+    counts outside these bounds will be skipped during training. Use ``None`` for
+    either value to disable that bound. This is useful for preventing out-of-memory
+    errors and ensuring consistent computational load. Default: ``[None, None]``."""
 
-    finetune: NotRequired[FinetuneHypers]
-    """Finetuning parameters for PET models pretrained on large datasets.
-
-    See :ref:`fine-tuning` for more details.
-    """
+    finetune: NoFinetuneHypers | FinetuneHypers = {
+        "read_from": None,
+        "method": "full",
+        "config": {},
+        "inherit_heads": {},
+    }
+    """Parameters for fine-tuning trained FlashMD models."""

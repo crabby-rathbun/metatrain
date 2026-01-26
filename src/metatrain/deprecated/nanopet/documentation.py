@@ -1,12 +1,12 @@
 """
 NanoPET (deprecated)
-======================
+====================
 
 .. warning::
 
   This is a **deprecated model**. You should not use it for anything important, and
   support for it will be removed in future versions of metatrain. Please use the
-  :ref:`PET model <architecture-pet>` instead.
+  :ref:`PET model <arch-pet>` instead.
 """
 
 from typing import Literal, Optional
@@ -146,3 +146,8 @@ class TrainerHypers(TypedDict):
     loss: str | dict[str, LossSpecification | str] = "mse"
     """This section describes the loss function to be used. See the
     :ref:`loss-functions` for more details."""
+    batch_atom_bounds: list[Optional[int]] = [None, None]
+    """Bounds for the number of atoms per batch as [min, max]. Batches with atom
+    counts outside these bounds will be skipped during training. Use ``None`` for
+    either value to disable that bound. This is useful for preventing out-of-memory
+    errors and ensuring consistent computational load. Default: ``[None, None]``."""

@@ -11,19 +11,27 @@ arbitrarty targets, and a faster inference due to the ``fast attention``.
 
 {{SECTION_INSTALLATION}}
 
+Additional outputs
+------------------
+
+In addition to the targets defined in the dataset, the PET architecture can also output
+the following additional quantity:
+
+- ``features``: the internal PET features, before the different heads for each target.
+- :ref:`mtt-aux-target-last-layer-features`: The features for a given target, taken
+  before the last linear layer of the corresponding head.
+
 {{SECTION_DEFAULT_HYPERS}}
 
 Tuning hyperparameters
 ----------------------
 
-The default hyperparameters above will work well in most cases, but they
-may not be optimal for your specific dataset. There is good number of
-parameters to tune, both for the
-:ref:`model <architecture-{{architecture}}_model_hypers>` and the
-:ref:`trainer <architecture-{{architecture}}_trainer_hypers>`. Since seeing them
-for the first time might be overwhelming, here we provide a **list of the
-parameters that are in general the most important** (in decreasing order
-of importance):
+The default hyperparameters above will work well in most cases, but they may not be
+optimal for your specific dataset. There is good number of parameters to tune, both for
+the :ref:`model <arch-{{architecture}}_model_hypers>` and the :ref:`trainer
+<arch-{{architecture}}_trainer_hypers>`. Since seeing them for the first time might be
+overwhelming, here we provide a **list of the parameters that are in general the most
+important** (in decreasing order of importance):
 
 .. container:: mtt-hypers-remove-classname
 
@@ -129,6 +137,8 @@ class ModelHypers(TypedDict):
     """Layer normalization type."""
     activation: Literal["SiLU", "SwiGLU"] = "SwiGLU"
     """Activation function."""
+    attention_temperature: float = 1.0
+    """The temperature scaling factor for attention scores."""
     transformer_type: Literal["PreLN", "PostLN"] = "PreLN"
     """The order in which the layer normalization and attention
     are applied in a transformer block. Available options are ``PreLN``
@@ -227,10 +237,15 @@ class TrainerHypers(TypedDict):
     best_model_metric: Literal["rmse_prod", "mae_prod", "loss"] = "mae_prod"
     """Metric used to select best checkpoint (e.g., ``rmse_prod``)"""
     grad_clip_norm: float = 1.0
-    """Maximum gradient norm value, by default inf (no clipping)"""
+    """Maximum gradient norm value."""
     loss: str | dict[str, LossSpecification | str] = "mse"
     """This section describes the loss function to be used. See the
     :ref:`loss-functions` for more details."""
+    batch_atom_bounds: list[Optional[int]] = [None, None]
+    """Bounds for the number of atoms per batch as [min, max]. Batches with atom
+    counts outside these bounds will be skipped during training. Use ``None`` for
+    either value to disable that bound. This is useful for preventing out-of-memory
+    errors and ensuring consistent computational load. Default: ``[None, None]``."""
 
     finetune: NoFinetuneHypers | FinetuneHypers = {
         "read_from": None,

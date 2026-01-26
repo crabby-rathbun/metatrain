@@ -9,6 +9,16 @@ descriptors, computed with `torch-spex <https://github.com/lab-cosmo/torch-spex>
 
 {{SECTION_INSTALLATION}}
 
+Additional outputs
+------------------
+
+In addition to the targets defined in the dataset, the SOAP-BPNN architecture can also
+output the following additional quantity:
+
+- ``features``: the internal features, before the different heads for each target.
+- :ref:`mtt-aux-target-last-layer-features`: The features for a given target, taken
+  before the last linear layer of the corresponding head.
+
 {{SECTION_DEFAULT_HYPERS}}
 
 {{SECTION_MODEL_HYPERS}}
@@ -203,3 +213,8 @@ class TrainerHypers(TypedDict):
     loss: str | dict[str, LossSpecification | str] = "mse"
     """This section describes the loss function to be used. See the
     :ref:`loss-functions` for more details."""
+    batch_atom_bounds: list[Optional[int]] = [None, None]
+    """Bounds for the number of atoms per batch as [min, max]. Batches with atom
+    counts outside these bounds will be skipped during training. Use ``None`` for
+    either value to disable that bound. This is useful for preventing out-of-memory
+    errors and ensuring consistent computational load. Default: ``[None, None]``."""
